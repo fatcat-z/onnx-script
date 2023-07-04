@@ -19,6 +19,7 @@ import onnx.defs
 from onnxscript import converter as converter_module
 from onnxscript import irbuilder, sourceinfo, type_annotation
 from onnxscript._internal import ast_utils
+import onnxscript.diagnostics as diagnostics
 
 _ATTRIBUTE_TYPE_TO_PYTHON_TYPE = {
     onnx.defs.OpSchema.AttrType.FLOAT: float,
@@ -504,7 +505,7 @@ class OnnxFunction(Op):
         """Implements an eager-mode execution of an onnxscript function."""
         # FIXME(after #225): Move import to the top of the file.
         from onnxscript import evaluator  # pylint: disable=import-outside-toplevel
-
+        args += ("diagnostic_context", diagnostics.common.onnxscript_context())
         return evaluator.default().eval_function(self, args, kwargs)
 
     def param_schemas(self) -> tuple[ParamSchema, ...]:

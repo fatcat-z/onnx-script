@@ -29,9 +29,13 @@ from torch.onnx import _type_utils
 from typing_extensions import TypeAlias
 
 import onnxscript
+import onnxscript.diagnostics as diagnostics
 from onnxscript import evaluator
 from onnxscript import tensor as onnxscript_tensor
 from onnxscript._internal import param_manipulation
+from onnxscript.diagnostics.infra import decorator
+import onnxscript.diagnostics.common as diag_common
+
 
 __all__ = [
     "TorchScriptTensor",
@@ -226,11 +230,23 @@ def _unwrap_tensors_to_torch_values(tensors):
     return _unwrap_tensor_to_torch_value(tensors)
 
 
+@beartype
+def _aten_op_to_onnx_graph_formatter(
+    fn: Callable,
+    # diagnostic_context: diagnostics.infra.DiagnosticContext,
+    function: onnxscript.OnnxFunction,
+    *args,
+    **kwargs,
+) -> str:
+    return f"Aten Function: {function.name}:{function.op_schema}."
+
+
 class TorchScriptTracingEvaluator(evaluator.Evaluator):
     """An onnxscript Evaluator that captures the graph into torchscript."""
 
     def __init__(self, graph: TorchScriptGraph):
         self._graph: TorchScriptGraph = graph
+        self.diagnostic_context = diag_common.onnxscript_context()
 
     @property
     def graph(self) -> TorchScriptGraph:
@@ -240,9 +256,15 @@ class TorchScriptTracingEvaluator(evaluator.Evaluator):
         return self._graph.add_op_call(schema, inputs, attributes)
 
     @beartype
+    @decorator.diagnose_call(
+        rule=diagnostics.rules.onnxscript_convert_success,
+        diagnostic_type=diag_common.ONNXScriptDiagnostic,
+        diagnostic_message_formatter=_aten_op_to_onnx_graph_formatter,
+    )
     def eval_function(  # type: ignore[override]
         self,
         function: onnxscript.OnnxFunction,
+        # diagnostic_context: diagnostics.infra.DiagnosticContext,
         args: Sequence[ValidArgumentType],
         kwargs: Mapping[str, ValidArgumentType],
     ):

@@ -26,6 +26,7 @@ import onnx.defs
 import onnx.helper
 from typing_extensions import TypeAlias
 
+import onnxscript.diagnostics as diagnostics
 from onnxscript import autocast, irbuilder, onnx_opset, tensor, utils, values
 from onnxscript._internal import feature_switch, param_manipulation
 
