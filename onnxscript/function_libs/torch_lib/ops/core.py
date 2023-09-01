@@ -3991,11 +3991,18 @@ def aten_linspace(
         zero = op.CastLike(0.0, steps)
         one = op.CastLike(1.0, steps)
     elif _range_supported(dtype):
-        zero = op.Cast(0, to=dtype)
-        one = op.Cast(1, to=dtype)
-        start = op.Cast(start, to=dtype)
-        end = op.Cast(end, to=dtype)
-        steps = op.Cast(steps, to=dtype)
+        # zero = op.Cast(0, to=dtype)
+        # one = op.Cast(1, to=dtype)
+        # start = op.Cast(start, to=dtype)
+        # end = op.Cast(end, to=dtype)
+        # steps = op.Cast(steps, to=dtype)
+
+        zero = op.Cast(0, to=FLOAT.dtype)
+        one = op.Cast(1, to=FLOAT.dtype)
+
+        start = op.Cast(start, to=FLOAT.dtype)
+        end = op.Cast(end, to=FLOAT.dtype)
+        steps = op.Cast(steps, to=FLOAT.dtype)
     else:
         # Cast input to float if dtype is not supported by Range,
         # because the input dtype may be e.g. bfloat16 / int8 etc.
@@ -4009,13 +4016,26 @@ def aten_linspace(
 
     range_tensor = op.Range(zero, steps, one)
 
-    start = op.CastLike(start, end)
+    # start = op.CastLike(start, end)
+    if dtype == INT32.dtype:
+        start = op.Cast(op.Floor(start), to=FLOAT.dtype)
+
     step = op.Div(
         op.Sub(end, start),
         op.Sub(steps, one),
     )
 
-    return op.Add(op.Mul(range_tensor, step), start)
+    range_tensor = op.CastLike(range_tensor, step)
+
+    if dtype == -1 or not _range_supported(dtype):
+        return op.Add(op.Mul(range_tensor, step), start)
+    else:
+        result = op.Add(op.Mul(range_tensor, step), start)
+        if dtype == INT32.dtype:
+            print(f"------ {result}")
+            result = op.Floor(result)
+
+        return op.Cast(result, to=dtype)
 
 
 @torch_op("aten::log")
