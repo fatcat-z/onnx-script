@@ -832,6 +832,7 @@ TESTED_TORCHLIB_OPS: tuple[TorchLibOpInfo, ...] = (
         enabled_if=version_utils.onnxruntime_older_than("1.16"),
         reason="fixme (core dump): ORT aborts on scalar inputs to Reduce*-18. https://github.com/microsoft/onnxruntime/issues/16492",
     ),
+    TorchLibOpInfo("maximum_bool", core_ops.aten_maximum_bool),
     TorchLibOpInfo(
         "mean",
         core_ops.aten_mean,
@@ -886,6 +887,7 @@ TESTED_TORCHLIB_OPS: tuple[TorchLibOpInfo, ...] = (
         enabled_if=version_utils.onnxruntime_older_than("1.16"),
         reason="fixme (core dump): ORT aborts on scalar inputs to Reduce*-18. https://github.com/microsoft/onnxruntime/issues/16492",
     ),
+    TorchLibOpInfo("minimum_bool", core_ops.aten_minimum_bool),
     TorchLibOpInfo("mm", core_ops.aten_mm),
     TorchLibOpInfo("mul", core_ops.aten_mul),
     TorchLibOpInfo("narrow", core_ops.aten_narrow),
@@ -1349,12 +1351,7 @@ TESTED_TORCHLIB_OPS: tuple[TorchLibOpInfo, ...] = (
         "arange_start_step",
         core_ops.aten_arange_start_step,
         trace_only=True,
-    )
-    .xfail(
-        dtypes=(torch.int32,),
-        reason="fixme: output shape mismatch in edge cases. https://github.com/microsoft/onnxscript/issues/974",
-    )
-    .xfail(
+    ).xfail(
         matcher=lambda sample: len(sample.args) != 2,
         reason="arange_start_step overload takes three arguments (input, start, step)",
     ),
@@ -1362,12 +1359,7 @@ TESTED_TORCHLIB_OPS: tuple[TorchLibOpInfo, ...] = (
         "arange_start",
         core_ops.aten_arange_start,
         trace_only=True,
-    )
-    .xfail(
-        dtypes=(torch.int32,),
-        reason="fixme: output shape mismatch in edge cases. https://github.com/microsoft/onnxscript/issues/974",
-    )
-    .skip(
+    ).skip(
         matcher=lambda sample: len(sample.args) != 1,
         reason="arange_start overload takes two arguments (input, start)",
     ),
@@ -1748,6 +1740,17 @@ TESTED_TORCHLIB_OPS: tuple[TorchLibOpInfo, ...] = (
         reason="dropout is random so the results do not match",
     ),
     TorchLibOpInfo(
+        "ops.aten._scaled_dot_product_flash_attention",
+        nn_ops.aten_scaled_dot_product_flash_attention,
+        trace_only=True,
+        tolerance={torch.float32: (3e-4, 1.5e-5)},
+        # Output[0] is OK, but other outputs just have the same shape with zero values
+        nondeterministic=True,
+    ).skip(
+        enabled_if=version_utils.torch_older_than("2.1"),
+        reason="The operator is not supported in older version.",
+    ),
+    TorchLibOpInfo(
         "nn.functional.scaled_dot_product_attention_bool_mask",
         nn_ops.aten_scaled_dot_product_attention_bool_mask,
         trace_only=True,
@@ -1910,8 +1913,10 @@ ops_test_common.duplicate_opinfo(OPS_DB, "div", ("div_mode", "div_mode_int"))
 ops_test_common.duplicate_opinfo(OPS_DB, "full_like", ("full_like_dtype",))
 ops_test_common.duplicate_opinfo(OPS_DB, "index_put", ("index_put_bool",))
 ops_test_common.duplicate_opinfo(OPS_DB, "max", ("max_dim",))
+ops_test_common.duplicate_opinfo(OPS_DB, "maximum", ("maximum_bool",))
 ops_test_common.duplicate_opinfo(OPS_DB, "mean", ("mean_dim",))
 ops_test_common.duplicate_opinfo(OPS_DB, "min", ("min_dim",))
+ops_test_common.duplicate_opinfo(OPS_DB, "minimum", ("minimum_bool",))
 ops_test_common.duplicate_opinfo(OPS_DB, "new_empty", ("new_empty_dtype",))
 ops_test_common.duplicate_opinfo(OPS_DB, "new_empty_strided", ("new_empty_strided_dtype",))
 ops_test_common.duplicate_opinfo(OPS_DB, "new_full", ("new_full_dtype",))

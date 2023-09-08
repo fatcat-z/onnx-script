@@ -425,6 +425,15 @@ def _range_supported(dtype: int) -> bool:
     }
 
 
+def _integral_to_be_adjusted(dtype: int) -> bool:
+    """Returns true if the dtype is special integral handled by torch."""
+    return dtype in {
+        INT8.dtype,
+        INT16.dtype,
+        INT32.dtype,
+    }
+
+
 @torch_op("aten::arange", trace_only=True)
 def aten_arange(end: Union[DOUBLE, FLOAT, INT16, INT32, INT64], dtype: int = -1) -> TensorType:
     """arange(Scalar end, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor"""
@@ -484,6 +493,26 @@ def aten_arange_start(
     return result
 
 
+@torch_op("aten::arange.start_step", private=True)
+def _adjust_args_for_arange_int_dtype(
+    start: TRealUnlessFloat16OrInt8,
+    end: TRealUnlessFloat16OrInt8,
+    step: TRealUnlessFloat16OrInt8,
+) -> Tuple[FLOAT, FLOAT, FLOAT]:
+    zero = op.Cast(0.0, to=FLOAT.dtype)
+    start = op.Cast(start, to=FLOAT.dtype)
+    end = op.Cast(end, to=FLOAT.dtype)
+    step = op.Cast(step, to=FLOAT.dtype)
+
+    if start < zero:
+        start = op.Ceil(start)
+
+    if step < zero:
+        start = op.Floor(start)
+
+    return (start, end, step)
+
+
 @torch_op("aten::arange.start_step", trace_only=True)
 def aten_arange_start_step(
     start: TRealUnlessFloat16OrInt8,
@@ -498,14 +527,20 @@ def aten_arange_start_step(
 
     if dtype == -1:
         result = op.Range(start, end, step)
-    elif _range_supported(dtype):
+    elif _integral_to_be_adjusted(dtype):
+        # PyTorch arange op handles these integral types differently from INT64,
+        # so we have to adjust these arguments accordingly.
+        # https://github.com/pytorch/pytorch/blob/121cfb60c0817816fcbe2190303b7f6d05c77cf3/torch/_refs/__init__.py#L4794
+        start, end, step = _adjust_args_for_arange_int_dtype(start, end, step)
+        result = op.Cast(op.Range(start, end, step), to=dtype)
+    elif dtype == INT64.dtype:
         end = op.Cast(end, to=dtype)
         start = op.Cast(start, to=dtype)
         step = op.Cast(step, to=dtype)
         result = op.Range(start, end, step)
     else:
         # Cast input to float if dtype is not supported by Range,
-        # because the input dtype may be e.g. bfloat16 / int8 etc.
+        # because the input dtype may be e.g. bfloat16,
         # which Range does not support. The output type is ensured because the output
         # is casted to the specified dtype.
         end = op.Cast(end, to=FLOAT.dtype)
@@ -2333,20 +2368,13 @@ def aten_embedding_backward(
     raise NotImplementedError()
 
 
-@torch_op(
-    (
-        "aten::embedding_bag",
-        "aten::_embedding_bag",
-        "aten::_embedding_bag_forward_only",
-    ),
-    trace_only=True,
-)
+@torch_op("aten::embedding_bag", trace_only=True)
 def aten_embedding_bag(
     weight: TFloat,
     indices: INT64,
-    offsets: INT64 = None,  # Could be None accotding to the doc, go 2d branch
+    offsets: INT64,
     scale_grad_by_freq: bool = False,  # pylint: disable=unused-argument
-    mode: int = 1,  # [0,1,2] indicate ["sum", "mean", "max"], default is "mean"
+    mode: int = 0,  # [0,1,2] indicate ["sum", "mean", "max"]
     sparse: bool = False,  # pylint: disable=unused-argument
     per_sample_weights: Optional[TFloat] = None,
     include_last_offset: bool = False,
@@ -2466,20 +2494,33 @@ def _aten_embedding_bag_onnx(
     return result, offset2bag, bag_size, max_indices
 
 
-@torch_op("aten::embedding_bag.padding_idx", trace_only=True)
+@torch_op(
+    (
+        "aten::embedding_bag.padding_idx",
+        "aten::_embedding_bag",
+        "aten::_embedding_bag_forward_only",
+    ),
+    trace_only=True,
+)
 def aten_embedding_bag_padding_idx(
     weight: TFloat,
     indices: INT64,
-    offsets: INT64 = None,  # Could be None according to the doc, go 2d branch
+    offsets: INT64,
     scale_grad_by_freq: bool = False,  # pylint: disable=unused-argument
-    mode: int = 1,  # [0,1,2] indicate ["sum", "mean", "max"], default is "mean"
+    mode: int = 0,  # [0,1,2] indicate ["sum", "mean", "max"]
     sparse: bool = False,  # pylint: disable=unused-argument
     per_sample_weights: Optional[TFloat] = None,
     include_last_offset: bool = False,
-    padding_idx: Optional[int] = None,
+    padding_idx: int = -1,
 ) -> Tuple[TFloat, TFloat, TFloat, TFloat]:
-    """embedding_bag.padding_idx(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq, int mode, bool sparse, Tensor? per_sample_weights, bool include_last_offset, int? padding_idx) -> (Tensor, Tensor, Tensor, Tensor)"""
-    # assert(padding_idx is not None)
+    """embedding_bag.padding_idx(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq, int mode, bool sparse, Tensor? per_sample_weights, bool include_last_offset, int? padding_idx) -> (Tensor, Tensor, Tensor, Tensor)
+
+    We add default values for the attributes to accommodate _embedding_bag as well:
+    _embedding_bag(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, int mode=0, bool sparse=False, Tensor? per_sample_weights=None, bool include_last_offset=False, int padding_idx=-1)
+    """
+    assert (
+        padding_idx is not None
+    ), "padding_idx must not be None. This is likely a dispatcher error"
 
     if per_sample_weights is None:
         per_sample_weights = op.Expand(op.Constant(value_floats=[1.0]), op.Shape(indices))
@@ -4424,6 +4465,13 @@ def aten_maximum(self: TReal, other: TReal) -> TReal:
     return op.Max(self, other)
 
 
+@torch_op(("aten::maximum", "aten::max.other"))
+def aten_maximum_bool(self: BOOL, other: BOOL) -> BOOL:
+    """maximum(Tensor self, Tensor other) -> Tensor"""
+
+    return op.Or(self, other)
+
+
 @torch_op("aten::mean")
 def aten_mean(self: TReal) -> TReal:
     """mean(Tensor self, *, ScalarType? dtype=None) -> Tensor"""
@@ -4483,6 +4531,13 @@ def aten_minimum(self: TReal, other: TReal) -> TReal:
     """minimum(Tensor self, Tensor other) -> Tensor"""
 
     return op.Min(self, other)
+
+
+@torch_op(("aten::minimum", "aten::min.other"))
+def aten_minimum_bool(self: BOOL, other: BOOL) -> BOOL:
+    """minimum(Tensor self, Tensor other) -> Tensor"""
+
+    return op.And(self, other)
 
 
 def aten_miopen_batch_norm(
@@ -7463,9 +7518,9 @@ def _aten_var_mean_onnx(
     # Adjust var according to correction value
     if correction > 0.0:
         self_shape = op.Shape(self)
-        numel_float = op.Cast(op.ReduceProd(self_shape, keepdims=False), to=FLOAT.dtype)
+        numel_float = op.CastLike(op.ReduceProd(self_shape, keepdims=False), self)
         mul = op.Mul(var, numel_float)
-        sub = op.Sub(numel_float, correction)
+        sub = op.Sub(numel_float, op.CastLike(correction, self))
         var = op.Div(mul, sub)
 
     return var, mean
@@ -7533,7 +7588,7 @@ def aten_view_as_complex_copy(self: TTensor) -> TTensor:
     return op.Identity(self)
 
 
-@torch_op("aten::view_as_real")
+@torch_op("aten::view_as_real", complex=True)
 def aten_view_as_real(self: TTensor) -> TTensor:
     """view_as_real(Tensor(a) self) -> Tensor(a)"""
 
@@ -7542,7 +7597,7 @@ def aten_view_as_real(self: TTensor) -> TTensor:
     return op.Identity(self)
 
 
-@torch_op("aten::view_as_real_copy")
+@torch_op("aten::view_as_real_copy", complex=True)
 def aten_view_as_real_copy(self: TTensor) -> TTensor:
     """view_as_real_copy(Tensor self) -> Tensor"""
 
