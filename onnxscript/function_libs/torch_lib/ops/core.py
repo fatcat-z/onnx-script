@@ -25,6 +25,9 @@ from onnxscript import (
     INT32,
     INT64,
     UINT8,
+    UINT16,
+    UINT32,
+    UINT64,
     graph,
 )
 from onnxscript.function_libs.torch_lib.registration import torch_op
@@ -1086,10 +1089,51 @@ def aten_bitwise_and(self: TInt, other: TInt) -> TInt:
 
 
 @torch_op("aten::bitwise_left_shift")
-def aten_bitwise_left_shift(self: TInt, other: TInt) -> TInt:
+def aten_bitwise_left_shift_int16(self: INT16, other: INT16) -> INT16:
     """bitwise_left_shift.Tensor(Tensor self, Tensor other) -> Tensor"""
+    # assert other >= 0
+    self = op.Cast(self, to=UINT16.dtype)
+    other = op.Cast(other, to=UINT16.dtype)
 
-    return op.BitShift(self, other, direction="LEFT")
+    result = op.BitShift(self, other, direction="LEFT")
+
+    return op.Cast(result, to=INT16.dtype)
+
+
+@torch_op("aten::bitwise_left_shift")
+def aten_bitwise_left_shift_int32(self: INT32, other: INT32) -> INT32:
+    """bitwise_left_shift.Tensor(Tensor self, Tensor other) -> Tensor"""
+    # assert other >= 0
+    self = op.Cast(self, to=UINT32.dtype)
+    other = op.Cast(other, to=UINT32.dtype)
+
+    result = op.BitShift(self, other, direction="LEFT")
+
+    return op.Cast(result, to=INT32.dtype)
+
+
+@torch_op("aten::bitwise_left_shift")
+def aten_bitwise_left_shift_int64(self: INT64, other: INT64) -> INT64:
+    """bitwise_left_shift.Tensor(Tensor self, Tensor other) -> Tensor"""
+    # assert other >= 0
+    self = op.Cast(self, to=UINT64.dtype)
+    other = op.Cast(other, to=UINT64.dtype)
+
+    result = op.BitShift(self, other, direction="LEFT")
+
+    return op.Cast(result, to=INT64.dtype)
+
+
+@torch_op("aten::bitwise_left_shift")
+def aten_bitwise_left_shift_int8(self: INT8, other: INT8) -> INT8:
+    """bitwise_left_shift.Tensor(Tensor self, Tensor other) -> Tensor"""
+    # assert other >= 0
+    self = op.Cast(self, to=UINT8.dtype)
+    other = op.Cast(other, to=UINT8.dtype)
+
+    result = op.BitShift(self, other, direction="LEFT")
+
+    return op.Cast(result, to=INT8.dtype)
 
 
 @torch_op("aten::bitwise_not")
@@ -1116,10 +1160,98 @@ def aten_bitwise_or(self: TInt, other: TInt) -> TInt:
 
 
 @torch_op("aten::bitwise_right_shift")
-def aten_bitwise_right_shift(self: TInt, other: TInt) -> TInt:
+def aten_bitwise_right_shift_int16(self: INT16, other: INT16) -> INT16:
     """bitwise_right_shift.Tensor(Tensor self, Tensor other) -> Tensor"""
+    negative = op.Less(self, 0)
+    self = op.Cast(self, to=UINT16.dtype)
+    other = op.Cast(other, to=UINT16.dtype)
 
-    return op.BitShift(self, other, direction="RIGHT")
+    # Simulate arithmetic shift using logical shift
+    # Clear the lower bits of an all one mask to create the mask to simulate the sign bit shifting
+    mask = op.BitShift(
+        op.Cast(op.Constant(value_int=0xFFFF), to=UINT16.dtype), other, direction="RIGHT"
+    )
+    mask = op.BitwiseNot(mask)
+    # Do logical shift
+    shifted = op.BitShift(self, other, direction="RIGHT")
+    # Compute the arithmetic shifted value assuming the sign bit was set
+    negative_shifted = op.BitwiseOr(shifted, mask)
+    # Choose the shifted value based on the sign bit
+    return op.Where(
+        negative, op.Cast(negative_shifted, to=INT16.dtype), op.Cast(shifted, to=INT16.dtype)
+    )
+
+
+@torch_op("aten::bitwise_right_shift")
+def aten_bitwise_right_shift_int32(self: INT32, other: INT32) -> INT32:
+    """bitwise_right_shift.Tensor(Tensor self, Tensor other) -> Tensor"""
+    negative = op.Less(self, 0)
+    self = op.Cast(self, to=UINT32.dtype)
+    other = op.Cast(other, to=UINT32.dtype)
+
+    # Simulate arithmetic shift using logical shift
+    # Clear the lower bits of an all one mask to create the mask to simulate the sign bit shifting
+    mask = op.BitShift(
+        op.Cast(op.Constant(value_int=0xFFFFFFFF), to=UINT32.dtype), other, direction="RIGHT"
+    )
+    mask = op.BitwiseNot(mask)
+    # Do logical shift
+    shifted = op.BitShift(self, other, direction="RIGHT")
+    # Compute the arithmetic shifted value assuming the sign bit was set
+    negative_shifted = op.BitwiseOr(shifted, mask)
+    # Choose the shifted value based on the sign bit
+    return op.Where(
+        negative, op.Cast(negative_shifted, to=INT32.dtype), op.Cast(shifted, to=INT32.dtype)
+    )
+
+
+@torch_op("aten::bitwise_right_shift")
+def aten_bitwise_right_shift_int64(self: INT64, other: INT64) -> INT64:
+    """bitwise_right_shift.Tensor(Tensor self, Tensor other) -> Tensor"""
+    negative = op.Less(self, 0)
+    self = op.Cast(self, to=UINT64.dtype)
+    other = op.Cast(other, to=UINT64.dtype)
+
+    # Simulate arithmetic shift using logical shift
+    # Clear the lower bits of an all one mask to create the mask to simulate the sign bit shifting
+    mask = op.BitShift(
+        # 0xFFFFFFFFFFFFFFFF
+        op.Cast(op.Constant(value_int=-1), to=UINT64.dtype),
+        other,
+        direction="RIGHT",
+    )
+    mask = op.BitwiseNot(mask)
+    # Do logical shift
+    shifted = op.BitShift(self, other, direction="RIGHT")
+    # Compute the arithmetic shifted value assuming the sign bit was set
+    negative_shifted = op.BitwiseOr(shifted, mask)
+    # Choose the shifted value based on the sign bit
+    return op.Where(
+        negative, op.Cast(negative_shifted, to=INT64.dtype), op.Cast(shifted, to=INT64.dtype)
+    )
+
+
+@torch_op("aten::bitwise_right_shift")
+def aten_bitwise_right_shift_int8(self: INT8, other: INT8) -> INT8:
+    """bitwise_right_shift.Tensor(Tensor self, Tensor other) -> Tensor"""
+    negative = op.Less(self, 0)
+    self = op.Cast(self, to=UINT8.dtype)
+    other = op.Cast(other, to=UINT8.dtype)
+
+    # Simulate arithmetic shift using logical shift
+    # Clear the lower bits of an all one mask to create the mask to simulate the sign bit shifting
+    mask = op.BitShift(
+        op.Cast(op.Constant(value_int=0xFF), to=UINT8.dtype), other, direction="RIGHT"
+    )
+    mask = op.BitwiseNot(mask)
+    # Do logical shift
+    shifted = op.BitShift(self, other, direction="RIGHT")
+    # Compute the arithmetic shifted value assuming the sign bit was set
+    negative_shifted = op.BitwiseOr(shifted, mask)
+    # Choose the shifted value based on the sign bit
+    return op.Where(
+        negative, op.Cast(negative_shifted, to=INT8.dtype), op.Cast(shifted, to=INT8.dtype)
+    )
 
 
 @torch_op(
@@ -2192,12 +2324,154 @@ def aten_diagflat(self: TensorType, offset: int = 0) -> TensorType:
     raise NotImplementedError()
 
 
-def aten_diagonal(
-    self: TensorType, offset: int = 0, dim1: int = 0, dim2: int = 1
-) -> TensorType:
+@torch_op("aten::diagonal", trace_only=True)
+def aten_diagonal(self: TReal, offset: int = 0, dim1: int = 0, dim2: int = 1) -> TReal:
     """diagonal(Tensor(a) self, int offset=0, int dim1=0, int dim2=1) -> Tensor(a)"""
 
-    raise NotImplementedError()
+    # perm is used to transpose the tensor to make dim1 and dim2 as the last 2 dims
+    # [0,1,2] -> [2,0,1] when dim1=0 and dim2=1
+    # [0,1,2] -> [1,0,2] when dim1=0 and dim2=2
+    # [0,1,2] -> [0,1,2] when dim1=1 and dim2=2
+    self_rank = len(self.shape)
+    perm = list(range(self_rank))
+    perm.remove(dim1)
+    perm.remove(dim2)
+    perm.append(dim1)
+    perm.append(dim2)
+
+    # If rank=2, then axes=[0]; if rank=3, then axes=[1]
+    # This is because computing diagonal sum is on dim2 after transpose by perm
+    axes = [self_rank - 2]
+
+    return _aten_diagonal_onnx(self, offset, dim1, dim2, perm, axes)
+
+
+@torch_op("aten::diagonal", private=True)
+def _aten_diagonal_onnx(
+    self: TTensor, offset: int, dim1: int, dim2: int, perm: Sequence[int], axes: Sequence[int]
+) -> TTensor:
+    neg_1 = op.Constant(value_ints=[-1])
+    dim1_size = op.Reshape(op.Gather(op.Shape(self), dim1), neg_1)  # row
+    dim2_size = op.Reshape(op.Gather(op.Shape(self), dim2), neg_1)  # col
+    mask_shape = op.Concat(dim1_size, dim2_size, axis=0)
+    tmp_tensor = op.ConstantOfShape(mask_shape)
+    mask = op.EyeLike(tmp_tensor, k=offset)
+    mask = op.CastLike(mask, self)
+    self_t = op.Transpose(self, perm=perm)
+    result = op.Mul(self_t, mask)
+    result = op.ReduceSum(result, keepdims=False, axes=axes)
+    # min(row, col)
+    min_dim_size = op.Min(dim1_size, dim2_size)
+    # take 2 tensors as example:
+    # one is 3x5 in size, min_dim_size = 3, dim1_size = 3
+    # the other is 5x3 in size, min_dim_size = 3, dim1_size = 5
+    # 3 rows x 5 cols     5 rows x 3 cols
+    # offset  diagonal    offset  diagonal
+    # ----------------    ----------------
+    # -4      0           -6      0
+    # -3      0           -5      0
+    # -2      1           -4      1
+    # -1      2           -3      2
+    # 0       3           -2      3
+    # 1       3           -1      3
+    # 2       3           0       3
+    # 3       2           1       2
+    # 4       1           2       1
+    # 5       0           3       0
+    # 6       0           4       0
+
+    # From above table, we can get the logic below
+    if offset < 0:
+        # row + offset
+        length = dim1_size + offset
+        start = op.Constant(value_ints=[0])
+    else:  # offset >= 0
+        # col - offset
+        length = dim2_size - offset
+        start = op.Reshape(op.Constant(value_int=offset), neg_1)
+
+    # max(min(length, min(row, col)), 0)
+    length = op.Max(op.Min(length, min_dim_size), 0)
+    end = start + length
+    result = op.Slice(result, start, end, axes=axes)
+
+    return result
+
+
+@torch_op("aten::diagonal", trace_only=True)
+def aten_diagonal_bool(self: BOOL, offset: int = 0, dim1: int = 0, dim2: int = 1) -> BOOL:
+    """diagonal(Tensor(a) self, int offset=0, int dim1=0, int dim2=1) -> Tensor(a)"""
+
+    # perm is used to transpose the tensor to make dim1 and dim2 as the last 2 dims
+    # [0,1,2] -> [2,0,1] when dim1=0 and dim2=1
+    # [0,1,2] -> [1,0,2] when dim1=0 and dim2=2
+    # [0,1,2] -> [0,1,2] when dim1=1 and dim2=2
+    self_rank = len(self.shape)
+    perm = list(range(self_rank))
+    perm.remove(dim1)
+    perm.remove(dim2)
+    perm.append(dim1)
+    perm.append(dim2)
+
+    # If rank=2, then axes=[0]; if rank=3, then axes=[1]
+    # This is because computing diagonal sum is on dim2 after transpose by perm
+    axes = [self_rank - 2]
+
+    return _aten_diagonal_bool_onnx(self, offset, dim1, dim2, perm, axes)
+
+
+@torch_op("aten::diagonal", private=True)
+def _aten_diagonal_bool_onnx(
+    self: BOOL, offset: int, dim1: int, dim2: int, perm: Sequence[int], axes: Sequence[int]
+) -> BOOL:
+    neg_1 = op.Constant(value_ints=[-1])
+    dim1_size = op.Reshape(op.Gather(op.Shape(self), dim1), neg_1)  # row
+    dim2_size = op.Reshape(op.Gather(op.Shape(self), dim2), neg_1)  # col
+    mask_shape = op.Concat(dim1_size, dim2_size, axis=0)
+    tmp_tensor = op.ConstantOfShape(mask_shape)
+    mask = op.EyeLike(tmp_tensor, k=offset)
+    self_int = op.Cast(self, to=INT64.dtype)
+    mask_int = op.Cast(mask, to=INT64.dtype)
+    self_int_t = op.Transpose(self_int, perm=perm)
+    result = op.Mul(self_int_t, mask_int)
+    result = op.ReduceSum(result, keepdims=False, axes=axes)
+    # min(row, col)
+    min_dim_size = op.Min(dim1_size, dim2_size)
+    # take 2 tensors as example:
+    # one is 3x5 in size, min_dim_size = 3, dim1_size = 3
+    # the other is 5x3 in size, min_dim_size = 3, dim1_size = 5
+    # 3 rows x 5 cols     5 rows x 3 cols
+    # offset  diagonal    offset  diagonal
+    # ----------------    ----------------
+    # -4      0           -6      0
+    # -3      0           -5      0
+    # -2      1           -4      1
+    # -1      2           -3      2
+    # 0       3           -2      3
+    # 1       3           -1      3
+    # 2       3           0       3
+    # 3       2           1       2
+    # 4       1           2       1
+    # 5       0           3       0
+    # 6       0           4       0
+
+    # From above table, we can get the logic below
+    if offset < 0:
+        # row + offset
+        length = dim1_size + offset
+        start = op.Constant(value_ints=[0])
+    else:  # offset >= 0
+        # col - offset
+        length = dim2_size - offset
+        start = op.Reshape(op.Constant(value_int=offset), neg_1)
+
+    # max(min(length, min(row, col)), 0)
+    length = op.Max(op.Min(length, min_dim_size), 0)
+    end = start + length
+    result = op.Slice(result, start, end, axes=axes)
+    result = op.Cast(result, to=BOOL.dtype)
+
+    return result
 
 
 def aten_diagonal_backward(
@@ -2999,10 +3273,15 @@ def aten_fmod(self: TRealOrUInt8, other: TRealOrUInt8) -> TRealOrUInt8:
     return op.Mod(self, other, fmod=1)
 
 
-def aten_frac(self: TensorType) -> TensorType:
-    """frac(Tensor self) -> Tensor"""
+@torch_op("aten::frac")
+def aten_frac(self: TFloat) -> TFloat:
+    """frac(Tensor self) -> Tensor
 
-    raise NotImplementedError()
+    Computes the fractional portion of each element in input.
+    """
+
+    # https://pytorch.org/docs/stable/generated/torch.frac.html
+    return op.Sub(self, op.Mul(op.Floor(op.Abs(self)), op.Sign(self)))
 
 
 def aten_frexp(self: TensorType) -> tuple[TensorType, TensorType]:
@@ -3110,11 +3389,24 @@ def aten_gcd(self: TensorType, other: TensorType) -> TensorType:
     raise NotImplementedError()
 
 
-@torch_op(("aten::ge", "aten::ge.Tensor", "aten::ge.Scalar"))
+@torch_op(("aten::ge", "aten::ge.Tensor", "aten::ge.Scalar", "aten::greater_equal"))
 def aten_ge(self: TReal, other: TReal) -> BOOL:
     """ge.Tensor(Tensor self, Tensor other) -> Tensor"""
 
     return op.GreaterOrEqual(self, other)
+
+
+@torch_op(("aten::ge", "aten::ge.Tensor", "aten::ge.Scalar", "aten::greater_equal"))
+def aten_ge_bool(self: BOOL, other: BOOL) -> BOOL:
+    """ge.Tensor(Tensor self, Tensor other) -> Tensor"""
+
+    # self, other, self >= other
+    #    F,    F,    T
+    #    F,    T,    F
+    #    T,    F,    T
+    #    T,    T,    T
+
+    return op.Or(self, op.Not(other))
 
 
 def aten_geqrf(self: TensorType) -> tuple[TensorType, TensorType]:
@@ -3133,20 +3425,6 @@ def aten_ger(self: TensorType, vec2: TensorType) -> TensorType:
 @torch_op("aten::getitem")
 def aten_getitem(self: Sequence[TTensor], i: INT64) -> TTensor:
     return op.SequenceAt(self, i)
-
-
-@torch_op("aten::greater")
-def aten_greater(self: TReal, other: TReal) -> BOOL:
-    """greater.Tensor(Tensor self, Tensor other) -> Tensor"""
-
-    return op.Greater(self, other)
-
-
-@torch_op("aten::greater_equal")
-def aten_greater_equal(self: TReal, other: TReal) -> BOOL:
-    """greater_equal.Tensor(Tensor self, Tensor other) -> Tensor"""
-
-    return op.GreaterOrEqual(self, other)
 
 
 @torch_op("aten::grid_sampler", trace_only=True)
@@ -3267,13 +3545,23 @@ def aten_gru_cell(
     raise NotImplementedError()
 
 
-@torch_op(("aten::gt", "aten::gt.Scalar"))
+@torch_op(("aten::gt", "aten::gt.Scalar", "aten::greater"))
 def aten_gt(self: TReal, other: TReal) -> BOOL:
     """gt.Tensor(Tensor self, Tensor other) -> Tensor"""
 
-    # TODO(justinchuby): Input spec: non bool tensor
-    # Boolean inputs can be pre-casted by policy
     return op.Greater(self, other)
+
+
+@torch_op(("aten::gt", "aten::gt.Scalar", "aten::greater"))
+def aten_gt_bool(self: BOOL, other: BOOL) -> BOOL:
+    """gt.Tensor(Tensor self, Tensor other) -> Tensor"""
+    # self, other, self > other
+    #    F,    F,    F
+    #    F,    T,    F
+    #    T,    F,    T
+    #    T,    T,    F
+
+    return op.And(self, op.Not(other))
 
 
 def aten_hamming_window(window_length: int) -> TensorType:
@@ -3971,20 +4259,21 @@ def aten_le(self: TReal, other: TReal) -> BOOL:
     return op.LessOrEqual(self, other)
 
 
+@torch_op(("aten::le", "aten::le.Tensor", "aten::less_equal"))
+def aten_le_bool(self: BOOL, other: BOOL) -> BOOL:
+    """le.Tensor(Tensor self, Tensor other) -> Tensor"""
+
+    # self, other, self <= other
+    #    F,    F,    T
+    #    F,    T,    T
+    #    T,    F,    F
+    #    T,    T,    T
+
+    return op.Or(other, op.Not(self))
+
+
 def aten_lerp(self: TensorType, end: TensorType, weight: TensorType) -> TensorType:
     """lerp.Tensor(Tensor self, Tensor end, Tensor weight) -> Tensor"""
-
-    raise NotImplementedError()
-
-
-def aten_less(self: TensorType, other: TensorType) -> TensorType:
-    """less.Tensor(Tensor self, Tensor other) -> Tensor"""
-
-    raise NotImplementedError()
-
-
-def aten_less_equal(self: TensorType, other: TensorType) -> TensorType:
-    """less_equal.Tensor(Tensor self, Tensor other) -> Tensor"""
 
     raise NotImplementedError()
 
@@ -4183,6 +4472,8 @@ def aten_logical_not(self: BOOL) -> BOOL:
         "aten::bitwise_or.Tensor",
         "aten::bitwise_or.Scalar",
         "aten::bitwise_or.Scalar_Tensor",
+        "aten::add",
+        "aten::add.Tensor",
     )
 )
 def aten_logical_or(self: BOOL, other: BOOL) -> BOOL:
@@ -4285,13 +4576,24 @@ def aten_lstm_mps_backward(
     raise NotImplementedError()
 
 
-@torch_op(("aten::lt", "aten::lt.Scalar"))
+@torch_op(("aten::lt", "aten::lt.Scalar", "aten::less"))
 def aten_lt(self: TReal, other: TReal) -> BOOL:
     """lt.Tensor(Tensor self, Tensor other) -> Tensor"""
 
-    # TODO(justinchuby): Input spec: non bool tensor
-    # Boolean inputs can be pre-casted by policy
     return op.Less(self, other)
+
+
+@torch_op(("aten::lt", "aten::lt.Scalar", "aten::less"))
+def aten_lt_bool(self: BOOL, other: BOOL) -> BOOL:
+    """lt.Tensor(Tensor self, Tensor other) -> Tensor"""
+
+    # self, other, self < other
+    #    F,    F,    F
+    #    F,    T,    T
+    #    T,    F,    F
+    #    T,    T,    F
+
+    return op.And(other, op.Not(self))
 
 
 def aten_lu_solve(self: TensorType, LU_data: TensorType, LU_pivots: TensorType) -> TensorType:
