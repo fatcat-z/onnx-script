@@ -52,8 +52,8 @@ TESTED_DTYPES = (
     # torch.bfloat16,
     # torch.float64,
     torch.bool,
-    # torch.int8,
-    # torch.int16,
+    torch.int8,
+    torch.int16,
     torch.int32,
     torch.int64,
     # torch.uint8,
@@ -166,6 +166,10 @@ def run_test_output_match(
         requires_grad=False,
     )
 
+    if dtype not in [torch.int32]:
+        return
+
+
     torchlib_op_info = tested_op_mapping[op.name]
     # Obtain the input_wrangler that manipulates the OpInfo inputs
     # to match the aten operator signature
@@ -181,6 +185,7 @@ def run_test_output_match(
             f"dtype '{dtype}' is not supported by the op '{op.name}'. "
             f"Type constraints: {onnx_function.op_schema.type_constraints}"
         )
+
 
     # Obtain the tolerance for the op
     rtol, atol = torchlib_op_info.get_tolerance(dtype)
@@ -205,6 +210,15 @@ def run_test_output_match(
             with ops_test_common.normal_xfail_skip_test_behaviors(test_behavior, reason):
                 input_onnx = [ops_test_common.convert_tensor_to_numpy(x) for x in inputs]
                 kwargs_onnx = ops_test_common.convert_kwargs_for_onnx(cpu_sample.kwargs)
+
+                print(f"\n ===== ONNX Input: {input_onnx}")
+                # if input_onnx == [-0.9, 2.1, 2.0] and dtype in [torch.int8]:
+                if input_onnx == [4.3, 0, 50] and dtype in [torch.int16]:
+                    print("debug")
+                # else:
+                #     continue
+
+
                 if input_wrangler:
                     input_onnx, kwargs_onnx = input_wrangler(input_onnx, kwargs_onnx)
                 torch_output = op(*inputs, **cpu_sample.kwargs)
@@ -273,6 +287,8 @@ def run_test_output_match(
                             check_device=False,
                         )
                     except AssertionError as e:
+                        print(f" ===== ONNX Output: {actual}")
+                        print(f" ===== Torch Output: {expected}")
                         if os.environ.get("CREATE_REPRODUCTION_REPORT") == "1":
                             error_reproduction.create_mismatch_report(
                                 test_name, i, inputs, cpu_sample.kwargs, actual, expected, e

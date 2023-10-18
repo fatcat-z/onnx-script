@@ -434,6 +434,7 @@ def _integral_to_be_adjusted(dtype: int) -> bool:
         INT8.dtype,
         INT16.dtype,
         INT32.dtype,
+        INT64.dtype,
     }
 
 
@@ -4349,7 +4350,7 @@ def aten_linspace(
     zero = op.Cast(0, to=FLOAT.dtype)
     one = op.Cast(1, to=FLOAT.dtype)
 
-
+    to_int = True
     if dtype == -1:
         range_tensor = op.Range(zero, steps, one)
     elif _integral_to_be_adjusted(dtype):
@@ -4358,12 +4359,15 @@ def aten_linspace(
         # https://github.com/pytorch/pytorch/blob/121cfb60c0817816fcbe2190303b7f6d05c77cf3/torch/_refs/__init__.py#L4794
         zero, steps, one = _adjust_args_for_arange_int_dtype(zero, steps, one)
         range_tensor = op.Cast(op.Range(zero, steps, one), to=dtype)
-        new_zero = op.CastLike(0, end)
         # if end < new_zero:
         #     end = op.Floor(end)
-        end = op.Cast(end, to=dtype)
-        start = op.Cast(start, to=dtype)
-
+        # if end < new_zero:
+        #     start = op.Floor(op.Cast(start, to=FLOAT.dtype))
+        # if start == 4.3:
+        #     print("debug")
+        #     to_int = False
+        # end = op.Cast(end, to=dtype)
+        # start = op.Cast(start, to=dtype)
     else:
         # Cast input to float if dtype is not supported by Range,
         # because the input dtype may be e.g. bfloat16,
@@ -4390,8 +4394,12 @@ def aten_linspace(
     )
 
     range_tensor = op.CastLike(range_tensor, step)
+
     mul_result = op.Cast(op.Mul(range_tensor, step), to=FLOAT.dtype)
-    start = op.Cast(start, to=FLOAT.dtype)
+    mul_result = op.Cast(mul_result, to=dtype)
+    mul_result = op.Cast(mul_result, to=FLOAT.dtype)
+
+    # start = op.Cast(start, to=FLOAT.dtype)
 
     if dtype == -1 or not _range_supported(dtype):
         result = op.Add(mul_result, start)
@@ -4400,9 +4408,8 @@ def aten_linspace(
         return result
     else:
         result = op.Add(mul_result, start)
-        if dtype == INT32.dtype:
-            print(f"------ {result}")
-            result = op.Floor(result)
+        # if dtype == INT64.dtype:
+        #     result = op.Floor(result)
 
         return op.Cast(result, to=dtype)
 
