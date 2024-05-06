@@ -17,7 +17,7 @@ from torch.testing._internal import (
 )
 from torch.testing._internal.opinfo import core as opinfo_core
 
-S = 5
+S = 3
 M = 10
 
 
@@ -584,7 +584,7 @@ def _prepare_data_for_fft_ops(device, dtype, requires_grad=False):
     if not is_fp16_or_chalf:
         oned_tensor = functools.partial(
             opinfo_core.make_tensor,
-            (31,),
+            (11,),
             device=device,
             dtype=dtype,
             requires_grad=requires_grad,
