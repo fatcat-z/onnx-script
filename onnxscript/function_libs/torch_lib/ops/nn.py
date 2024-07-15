@@ -1462,12 +1462,24 @@ def aten_reflection_pad2d(self: TTensor, padding: INT64) -> TTensor:
     return op.Pad(self, onnx_padding, mode="reflect")
 
 
+@torch_op("aten::reflection_pad2d_backward", trace_only=True)
 def aten_reflection_pad2d_backward(
     grad_output: TensorType, self: TensorType, padding: INT64
 ) -> TensorType:
     """reflection_pad2d_backward(Tensor grad_output, Tensor self, SymInt[4] padding) -> Tensor"""
+    # Get the shape of self
+    # self_shape = op.Shape(self)
+    # constant_val = op.ConstantOfShape(self_shape, value=1)
+    # return result
+    # print(grad_output)
+    # result = op.CastLike(constant_val, grad_output)
 
-    raise NotImplementedError()
+    # result = op.Reshape(grad_output, self_shape)
+    result = self
+    return result
+
+    # padding = 54
+    # raise NotImplementedError()
 
 
 def aten_reflection_pad3d(self: TensorType, padding: INT64) -> TensorType:
